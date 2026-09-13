@@ -43,6 +43,7 @@ android {
 dependencies {
     // Modules (Stage 11C)
     implementation(project(":core-network"))
+    implementation(project(":core-security"))
     implementation(project(":data-local"))
     implementation(project(":data-remote"))
     

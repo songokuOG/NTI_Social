@@ -5,6 +5,7 @@ import android.util.Log
 import com.afterlight.core.network.ConnectivityObserver
 import com.afterlight.core.security.PartyKeyCodec
 import com.afterlight.core.security.PartyKeyStore
+import com.afterlight.data.local.MediaEntityFactory
 import com.afterlight.data.local.MediaFilePaths
 import com.afterlight.data.local.dao.MediaDao
 import com.afterlight.data.local.dao.PartyDao
@@ -85,7 +86,7 @@ class FirebasePartyRepository @Inject constructor(
     private fun startSyncing(userId: String) {
         if (isSyncing) return
         isSyncing = true
-        Log.d(TAG, "Starting real-time Firestore sync for user: $userId")
+        Log.d(TAG, "Starting real-time Firestore sync for authenticated user")
 
         partyListener = firestore.collection("parties")
             .whereArrayContains("members", userId)
@@ -134,15 +135,13 @@ class FirebasePartyRepository @Inject constructor(
                                     expirationScheduler.scheduleExpiration(id, expiresAt)
                                     ensureSharedMediaKey(id, hostUserId, mediaKey)
                                 } else {
-                                    partyDao.softDelete(id)
-                                    expirationScheduler.cancelExpiration(id)
+                                    purgeLocalPartyAccess(id)
                                 }
                             }
 
                             val localActive = partyDao.getActivePartiesOnce(now)
                             localActive.filter { it.id !in snapshotIds }.forEach { stale ->
-                                partyDao.softDelete(stale.id)
-                                expirationScheduler.cancelExpiration(stale.id)
+                                purgeLocalPartyAccess(stale.id)
                             }
 
                             if (activeParties.isNotEmpty()) {
@@ -207,21 +206,16 @@ class FirebasePartyRepository @Inject constructor(
                                     mediaDao.deleteById(mediaId)
                                 }
                                 else -> {
-                                    val createdAt = doc.getTimestamp("createdAt")?.let {
-                                        Instant.fromEpochMilliseconds(it.toDate().time)
-                                    } ?: Clock.System.now()
+                                    val createdAtMs = doc.getTimestamp("createdAt")?.toDate()?.time
                                     val flagged = doc.getBoolean("flagged") ?: false
                                     toInsert.add(
-                                        MediaEntity(
-                                            id = mediaId,
+                                        MediaEntityFactory.fromRemote(
+                                            mediaId = mediaId,
                                             partyId = partyId,
-                                            encryptedFilePath = MediaFilePaths.encryptedFile(
-                                                context.filesDir,
-                                                partyId,
-                                                mediaId
-                                            ).absolutePath,
-                                            createdAt = createdAt,
-                                            flagged = flagged
+                                            filesDir = context.filesDir,
+                                            createdAtEpochMs = createdAtMs,
+                                            flagged = flagged,
+                                            nowEpochMs = Clock.System.now().toEpochMilliseconds()
                                         )
                                     )
                                 }
@@ -239,6 +233,15 @@ class FirebasePartyRepository @Inject constructor(
 
     private fun stopMediaListener(partyId: String) {
         mediaListeners.remove(partyId)?.remove()
+    }
+
+    private suspend fun purgeLocalPartyAccess(partyId: String) {
+        stopMediaListener(partyId)
+        expirationScheduler.cancelExpiration(partyId)
+        partyKeyStore.deleteKey(partyId)
+        MediaFilePaths.deletePartyFiles(context.filesDir, partyId)
+        mediaDao.deleteByPartyId(partyId)
+        partyDao.softDelete(partyId)
     }
 
     private suspend fun ensureSharedMediaKey(
@@ -372,21 +375,10 @@ class FirebasePartyRepository @Inject constructor(
 
     override suspend fun deleteParty(partyId: String): Result<Unit> {
         return try {
-            partyDao.softDelete(partyId)
-            expirationScheduler.cancelExpiration(partyId)
-            stopMediaListener(partyId)
-            partyKeyStore.deleteKey(partyId)
-
+            purgeLocalPartyAccess(partyId)
+            // Host deactivation happens in leaveParty (Admin SDK). A follow-up
+            // client get/update would fail once the host is no longer a member.
             partyService.leaveParty(partyId)
-            
-            val currentUserId = auth.currentUser?.uid
-            if (currentUserId != null) {
-                val partyDoc = firestore.collection("parties").document(partyId).get().await()
-                if (partyDoc.exists() && partyDoc.getString("hostUserId") == currentUserId) {
-                    firestore.collection("parties").document(partyId).update("isActive", false).await()
-                }
-            }
-
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

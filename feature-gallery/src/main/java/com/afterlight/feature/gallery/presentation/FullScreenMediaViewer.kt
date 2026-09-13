@@ -1,6 +1,5 @@
 package com.afterlight.feature.gallery.presentation
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -25,6 +24,7 @@ import com.afterlight.core.security.ScreenProtectionManager
 import com.afterlight.data.local.model.MediaEntity
 import com.afterlight.feature.gallery.di.GalleryEntryPoint
 import com.afterlight.feature.gallery.domain.GalleryRepository
+import com.afterlight.feature.gallery.domain.JpegBitmapDecoder
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -115,9 +115,13 @@ fun FullScreenMediaPage(
         decryptionState = withContext(Dispatchers.IO) {
             try {
                 val bytes = repository.decryptMedia(mediaEntity.id, partyId).getOrThrow()
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                val bitmap = JpegBitmapDecoder.decode(bytes)
                 bytes.fill(0)
-                DecryptionState.Success(bitmap)
+                if (bitmap == null) {
+                    DecryptionState.Error("Unable to decode photo")
+                } else {
+                    DecryptionState.Success(bitmap)
+                }
             } catch (e: Exception) {
                 DecryptionState.Error(e.message ?: "Decryption failed")
             }

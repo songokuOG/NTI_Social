@@ -18,6 +18,12 @@ interface SyncStateDao {
     
     @Query("SELECT * FROM sync_state WHERE mediaId = :mediaId")
     fun getSyncStateForMedia(mediaId: String): Flow<SyncStateEntity?>
+
+    @Query("SELECT * FROM sync_state WHERE mediaId = :mediaId")
+    suspend fun getByMediaIdOnce(mediaId: String): SyncStateEntity?
+
+    @Query("SELECT * FROM sync_state WHERE syncStatus IN ('PENDING', 'FAILED', 'IN_PROGRESS')")
+    suspend fun getIncompleteOnce(): List<SyncStateEntity>
     
     @Query("SELECT * FROM sync_state WHERE syncStatus = :status ORDER BY lastAttemptAt ASC")
     fun getSyncStateByStatus(status: SyncStatus): Flow<List<SyncStateEntity>>

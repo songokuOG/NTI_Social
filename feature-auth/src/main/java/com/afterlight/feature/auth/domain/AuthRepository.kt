@@ -1,5 +1,8 @@
 package com.afterlight.feature.auth.domain
 
+import android.content.Context
+import com.afterlight.core.security.PartyKeyStore
+import com.afterlight.data.local.MediaFilePaths
 import com.afterlight.data.local.dao.FaceDao
 import com.afterlight.data.local.dao.MediaDao
 import com.afterlight.data.local.dao.PartyDao
@@ -10,6 +13,7 @@ import com.afterlight.data.remote.firebase.FirebaseAuthService
 import com.afterlight.data.remote.dto.LoginRequest
 import com.afterlight.data.remote.dto.RegisterRequest
 import com.afterlight.feature.auth.data.SecureTokenProvider
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,8 +27,10 @@ import javax.inject.Singleton
  */
 @Singleton
 class AuthRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val firebaseAuthService: FirebaseAuthService,
     private val tokenProvider: SecureTokenProvider,
+    private val partyKeyStore: PartyKeyStore,
     private val userDao: UserDao,
     private val partyDao: PartyDao,
     private val mediaDao: MediaDao,
@@ -138,8 +144,9 @@ class AuthRepository @Inject constructor(
             // Ignore Firebase logout errors
         }
         
-        // Clear tokens
         tokenProvider.clearTokens()
+        partyKeyStore.deleteAll()
+        MediaFilePaths.deleteAllPartyFiles(context.filesDir)
         
         // Clear database in correct order (respects foreign keys)
         faceDao.deleteAll()

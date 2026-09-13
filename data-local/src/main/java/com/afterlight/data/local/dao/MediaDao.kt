@@ -1,9 +1,8 @@
 package com.afterlight.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.afterlight.data.local.model.MediaEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -16,6 +15,9 @@ interface MediaDao {
     
     @Query("SELECT * FROM media WHERE id = :mediaId")
     fun getMediaById(mediaId: String): Flow<MediaEntity?>
+
+    @Query("SELECT * FROM media WHERE id = :mediaId")
+    suspend fun getByIdOnce(mediaId: String): MediaEntity?
     
     @Query("SELECT * FROM media WHERE partyId = :partyId ORDER BY createdAt DESC")
     fun getMediaForParty(partyId: String): Flow<List<MediaEntity>>
@@ -29,10 +31,12 @@ interface MediaDao {
     @Query("SELECT COUNT(*) FROM media WHERE partyId = :partyId")
     fun getMediaCountForParty(partyId: String): Flow<Int>
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Upsert, not REPLACE: SQLite REPLACE deletes the row first and would
+    // CASCADE-wipe sync_state when the media listener re-applies a document.
+    @Upsert
     suspend fun insert(media: MediaEntity)
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAll(media: List<MediaEntity>)
     
     @Query("UPDATE media SET flagged = :flagged WHERE id = :mediaId")

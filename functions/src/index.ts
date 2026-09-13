@@ -157,7 +157,9 @@ export const joinParty = onCall(async (request) => {
 });
 
 /**
- * Get details of a party
+ * Get details of a party.
+ * Intentionally kept as a callable contract for future/non-Android clients.
+ * The Android app reads party state from Firestore + Room instead.
  */
 export const getParty = onCall(async (request) => {
   if (!request.auth) {
@@ -268,7 +270,9 @@ export const leaveParty = onCall(async (request) => {
 });
 
 /**
- * Get media list for a party with pagination
+ * Get media list for a party with pagination.
+ * Intentionally kept as a callable contract. Android uses a Firestore
+ * media listener and does not call this function.
  */
 export const getPartyMedia = onCall(async (request) => {
   if (!request.auth) {

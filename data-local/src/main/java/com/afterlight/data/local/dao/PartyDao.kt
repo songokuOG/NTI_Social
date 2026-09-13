@@ -1,9 +1,8 @@
 package com.afterlight.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.afterlight.data.local.model.PartyEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.Instant
@@ -30,10 +29,12 @@ interface PartyDao {
     @Query("SELECT * FROM parties WHERE expiresAt <= :currentTime AND isDeleted = 0")
     fun getExpiredParties(currentTime: Instant): Flow<List<PartyEntity>>
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Upsert, not REPLACE: SQLite REPLACE deletes the row first and would
+    // CASCADE-wipe media/sync_state on every party snapshot.
+    @Upsert
     suspend fun insert(party: PartyEntity)
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAll(parties: List<PartyEntity>)
     
     @Query("UPDATE parties SET isDeleted = 1 WHERE id = :partyId")

@@ -57,4 +57,8 @@ class PartyKeyStore @Inject constructor(
     fun deleteKey(partyId: String) {
         prefs.edit().remove(KEY_PREFIX + partyId).apply()
     }
+
+    fun deleteAll() {
+        prefs.edit().clear().apply()
+    }
 }

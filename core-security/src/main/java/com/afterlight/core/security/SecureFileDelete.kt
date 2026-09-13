@@ -5,8 +5,12 @@ import java.io.RandomAccessFile
 import java.security.SecureRandom
 
 /**
- * DoD 5220.22-M compliant secure file deletion.
- * 3-pass overwrite: 0x00, 0xFF, random bytes.
+ * Best-effort overwrite-then-delete for local files.
+ *
+ * The 3-pass pattern (0x00, 0xFF, random) is a historical DoD 5220.22-M approach.
+ * On modern flash/F2FS/ext4 storage it does not guarantee physical erasure of
+ * previous blocks. Treat this as stronger than a plain delete(), not as forensic
+ * sanitization.
  */
 fun File.secureDelete() {
     if (!exists()) {

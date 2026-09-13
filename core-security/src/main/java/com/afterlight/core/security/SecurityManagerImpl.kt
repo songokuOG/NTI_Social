@@ -5,13 +5,8 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.security.KeyStore
-import java.security.SecureRandom
-import javax.crypto.Cipher
 import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,10 +27,6 @@ class SecurityManagerImpl @Inject constructor(
         const val TAG = "SecurityManagerImpl"
         const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         const val KEY_ALIAS_PREFIX = "afterlight_party_"
-        const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
-        const val IV_LENGTH_BYTES = 12
-        const val GCM_TAG_LENGTH_BITS = 128
-        const val BUFFER_SIZE = 8192
     }
     
     private val keyStore: KeyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply {
@@ -46,8 +37,8 @@ class SecurityManagerImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             try {
                 val secretKey = getSharedKeyOrThrow(partyId)
-                encryptWithKey(inputFile, outputFile, secretKey)
-                Log.d(TAG, "Encrypted file: ${inputFile.name} -> ${outputFile.name}")
+                AesGcmFileCipher.encrypt(inputFile, outputFile, secretKey)
+                Log.d(TAG, "Encrypted file for party")
             } catch (e: Exception) {
                 Log.e(TAG, "Encryption failed for party $partyId", e)
                 throw SecurityException("Encryption failed: ${e.message}", e)
@@ -65,8 +56,8 @@ class SecurityManagerImpl @Inject constructor(
             var lastError: Exception? = null
             for (secretKey in keys) {
                 try {
-                    decryptWithKey(inputFile, outputFile, secretKey)
-                    Log.d(TAG, "Decrypted file: ${inputFile.name} -> ${outputFile.name}")
+                    AesGcmFileCipher.decrypt(inputFile, outputFile, secretKey)
+                    Log.d(TAG, "Decrypted file for party")
                     return@withContext
                 } catch (e: Exception) {
                     lastError = e
@@ -83,7 +74,7 @@ class SecurityManagerImpl @Inject constructor(
     
     override suspend fun deleteSecurely(file: File): Boolean = withContext(Dispatchers.IO) {
         if (!file.exists()) {
-            Log.w(TAG, "File does not exist: ${file.absolutePath}")
+            Log.w(TAG, "Secure delete skipped: file missing")
             return@withContext false
         }
         
@@ -139,53 +130,4 @@ class SecurityManagerImpl @Inject constructor(
         }.getOrNull()
     }
 
-    private fun encryptWithKey(inputFile: File, outputFile: File, secretKey: SecretKey) {
-        val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-        val iv = ByteArray(IV_LENGTH_BYTES)
-        SecureRandom().nextBytes(iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-
-        FileInputStream(inputFile).use { input ->
-            FileOutputStream(outputFile).use { output ->
-                output.write(iv)
-                val buffer = ByteArray(BUFFER_SIZE)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    val encryptedChunk = cipher.update(buffer, 0, bytesRead)
-                    if (encryptedChunk != null) {
-                        output.write(encryptedChunk)
-                    }
-                }
-                output.write(cipher.doFinal())
-                buffer.fill(0)
-            }
-        }
-    }
-
-    private fun decryptWithKey(inputFile: File, outputFile: File, secretKey: SecretKey) {
-        val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-        FileInputStream(inputFile).use { input ->
-            val iv = ByteArray(IV_LENGTH_BYTES)
-            val ivBytesRead = input.read(iv)
-            if (ivBytesRead != IV_LENGTH_BYTES) {
-                throw SecurityException("Invalid encrypted file: IV missing or truncated")
-            }
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-            FileOutputStream(outputFile).use { output ->
-                val buffer = ByteArray(BUFFER_SIZE)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    val decryptedChunk = cipher.update(buffer, 0, bytesRead)
-                    if (decryptedChunk != null) {
-                        output.write(decryptedChunk)
-                    }
-                }
-                val finalBlock = cipher.doFinal()
-                if (finalBlock.isNotEmpty()) {
-                    output.write(finalBlock)
-                }
-                buffer.fill(0)
-            }
-        }
-    }
 }

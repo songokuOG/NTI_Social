@@ -11,7 +11,11 @@ service firebase.storage {
     }
 
     match /encrypted-media/{partyId}/{mediaId} {
-      allow read, write: if isPartyMember(partyId);
+      allow read: if isPartyMember(partyId);
+      // Delete has no request.resource; a write+size rule would deny deletes.
+      allow create, update: if isPartyMember(partyId)
+        && request.resource.size < 15 * 1024 * 1024;
+      allow delete: if isPartyMember(partyId);
     }
   }
 }
